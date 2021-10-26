@@ -38,9 +38,9 @@ It can do that by using SQLAlchemy's db.relationship().
 
 The UserModel is the final data definition in our API. They contain:
 
-``id``;
-``username``; and
-``password``.
+- ``id``;
+- ``username``; and
+- ``password``.
 
 ### Resources
 
