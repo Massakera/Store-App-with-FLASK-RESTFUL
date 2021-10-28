@@ -3,7 +3,7 @@ from flask import request, url_for
 
 from db import db
 from libs.mailgun import Mailgun
-from models.confirmations import ConfirmationModel
+from models.confirmation import ConfirmationModel
 
 
 class UserModel(db.Model):
@@ -20,7 +20,8 @@ class UserModel(db.Model):
 
     @property
     def most_recent_confirmation(self) -> "ConfirmationModel":
-        return self.confirmation.ordey_by(db.desc(ConfirmationModel.expire_at)).first()
+        # ordered by expiration time (in descending order)
+        return self.confirmation.order_by(db.desc(ConfirmationModel.expire_at)).first()
 
     @classmethod
     def find_by_username(cls, username: str) -> "UserModel":
@@ -36,7 +37,9 @@ class UserModel(db.Model):
 
     def send_confirmation_email(self) -> Response:
         subject = "Registration Confirmation"
-        link = request.url_root[:-1] + url_for("userconfirm", user_id=self.id)
+        link = request.url_root[:-1] + url_for(
+            "confirmation", confirmation_id=self.most_recent_confirmation.id
+        )
         text = f"Please click the link to confirm your registration: {link}"
         html = f"<html>Please click the link to confirm your registration: <a href={link}>link</a></html>"
         return Mailgun.send_email([self.email], subject, text, html)

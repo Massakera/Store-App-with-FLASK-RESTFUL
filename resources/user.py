@@ -45,6 +45,7 @@ class UserRegister(Resource):
 
         try:
             user.save_to_db()
+
             confirmation = ConfirmationModel(user.id)
             confirmation.save_to_db()
             user.send_confirmation_email()
@@ -54,7 +55,7 @@ class UserRegister(Resource):
             return {"message": str(e)}, 500
         except:  # failed to save user to db
             traceback.print_exc()
-            user.delte_from_db()
+            user.delete_from_db()
             return {"message": FAILED_TO_CREATE}, 500
 
 
@@ -116,6 +117,3 @@ class TokenRefresh(Resource):
         current_user = get_jwt_identity()
         new_token = create_access_token(identity=current_user, fresh=False)
         return {"access_token": new_token}, 200
-
-
-

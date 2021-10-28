@@ -1,25 +1,27 @@
+from flask import render_template, make_response
+from flask_restful import Resource
+import traceback
 from time import time
 
-from flask_restful import Resource
-from flask import make_response, render_template
+from models.confirmation import ConfirmationModel
+from schemas.confirmation import ConfirmationSchema
+from models.user import UserModel
+from resources.user import USER_NOT_FOUND
 from libs.mailgun import MailGunException
 
-from resources.user import USER_NOT_FOUND
-from models.confirmations import ConfirmationModel
-from models.user import UserModel
-from schemas.confirmation import ConfirmationModel, ConfirmationSchema
+NOT_FOUND = "Confirmation reference not found."
+EXPIRED = "The link has expired."
+ALREADY_CONFIRMED = "Registration has already been confirmed."
+RESEND_FAIL = "Internal server error. Failed to resend confirmation email."
+RESEND_SUCCESSFUL = "E-mail confirmation successfully re-sent."
 
 confirmation_schema = ConfirmationSchema()
 
-NOT_FOUND = "Confirmation on reference not found."
-EXPIRED = "The link has expired."
-ALREAD_CONFIRMED = "Registration has already been confirmed."
-RESEND_FAIL = "Internal server error. Failed to resend confirmation email."
-RESEND_SUCESSFUL = "E-mail confirmation successfully re-sent."
+
 class Confirmation(Resource):
+    # returns the confirmation page
     @classmethod
     def get(cls, confirmation_id: str):
-        """Return confirmation HTML page"""
         confirmation = ConfirmationModel.find_by_id(confirmation_id)
         if not confirmation:
             return {"message": NOT_FOUND}, 404
@@ -28,54 +30,64 @@ class Confirmation(Resource):
             return {"message": EXPIRED}, 400
 
         if confirmation.confirmed:
-            return {"message": ALREAD_CONFIRMED}, 400
+            return {"message": ALREADY_CONFIRMED}, 400
 
         confirmation.confirmed = True
         confirmation.save_to_db()
 
-        headers = {"Content-type": "text/html"}
+        headers = {"Content-Type": "text/html"}
         return make_response(
-            render_template("confirmatio_page.html", email=confirmation.user.email),
+            render_template("confirmation_page.html", email=confirmation.user.email),
             200,
             headers,
         )
+
+
 class ConfirmationByUser(Resource):
     @classmethod
     def get(cls, user_id: int):
-
-        """Returns confirmations for a given user. Use for testing."""
+        """
+        This endpoint is used for testing and viewing Confirmation models and should not be exposed to public.
+        """
         user = UserModel.find_by_id(user_id)
         if not user:
             return {"message": USER_NOT_FOUND}, 404
-        
         return (
             {
                 "current_time": int(time()),
-                "confirmatio": [
-                    confirmation_schema_dump(each)
+                # we filter the result by expiration time in descending order for convenience
+                "confirmation": [
+                    confirmation_schema.dump(each)
                     for each in user.confirmation.order_by(ConfirmationModel.expire_at)
                 ],
             },
             200,
         )
-    @classmethod
-    def post(cls, user_id: int):
 
-        """Resent confirmation email"""
+    @classmethod
+    def post(cls, user_id):
+        """
+        This endpoint resend the confirmation email with a new confirmation model. It will force the current
+        confirmation model to expire so that there is only one valid link at once.
+        """
         user = UserModel.find_by_id(user_id)
         if not user:
             return {"message": USER_NOT_FOUND}, 404
+
         try:
-            confirmation = user.most_recent_confirmation
+            # find the most current confirmation for the user
+            confirmation = user.most_recent_confirmation  # using property decorator
             if confirmation:
                 if confirmation.confirmed:
-                    return {"message": ALREAD_CONFIRMED}, 400
+                    return {"message": ALREADY_CONFIRMED}, 400
                 confirmation.force_to_expire()
-            
-            new_confirmation = ConfirmationModel(user_id)
+
+            new_confirmation = ConfirmationModel(user_id)  # create a new confirmation
             new_confirmation.save_to_db()
-            user.send_confirmation_email()
-            return {"message": RESEND_SUCESSFUL}, 201
+            # Does `user` object know the new confirmation by now? Yes.
+            # An excellent example where lazy='dynamic' comes into use.
+            user.send_confirmation_email()  # re-send the confirmation email
+            return {"message": RESEND_SUCCESSFUL}, 201
         except MailGunException as e:
             return {"message": str(e)}, 500
         except:
