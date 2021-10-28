@@ -35,7 +35,7 @@ class Confirmation(Resource):
 
         headers = {"Content-type": "text/html"}
         return make_response(
-            render_template("confirmatio_path.html", email=confirmation.user.email),
+            render_template("confirmatio_page.html", email=confirmation.user.email),
             200,
             headers,
         )
